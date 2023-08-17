@@ -342,7 +342,7 @@ func parseCli(args []string) (options, []string, error) {
 		changed = append(changed, "with-templates")
 	}
 
-	// To override pause_replication = true from the config file on the command line,
+	// To override encrypt = true from the config file on the command line,
 	// have MergeCliAndConfigOptions() use the false value
 	if *NoEncrypt {
 		opts.Encrypt = false
