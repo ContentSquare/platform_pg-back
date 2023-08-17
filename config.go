@@ -80,7 +80,7 @@ type options struct {
 	skipGlobals      bool
 	skipSettings     bool
 	skipConfigFiles  bool
-	Pausereplication bool
+	PauseReplication bool
 
 	Upload       string // values are none, s3, sftp, gcs
 	PurgeRemote  bool
@@ -257,7 +257,12 @@ func parseCli(args []string) (options, []string, error) {
 	pflag.StringSliceVarP(&opts.ExcludeDbs, "exclude-dbs", "D", []string{}, "list of databases to exclude")
 	pflag.BoolVarP(&opts.WithTemplates, "with-templates", "t", false, "include templates")
 	WithoutTemplates := pflag.Bool("without-templates", false, "force exclude templates")
-	pflag.Bool("no-pause-replication", false, "do not pause the replication before performing dump")
+
+	NoPauseReplication := pflag.Bool("no-pause-replication", false, "do not pause replication before performing dump")
+	pflag.BoolVarP(&opts.skipGlobals, "skip-globals", "", false, "skip postgres globals")
+	pflag.BoolVarP(&opts.skipConfigFiles, "skip-config-files", "", false, "skip postgres config files")
+	pflag.BoolVarP(&opts.skipSettings, "skip-settings", "", false, "skip postgres settings")
+
 	pflag.IntVarP(&opts.PauseTimeout, "pause-timeout", "T", 3600, "abort if replication cannot be paused after this number\nof seconds")
 	pflag.IntVarP(&opts.Jobs, "jobs", "j", 1, "dump this many databases concurrently")
 	pflag.StringVarP(&format, "format", "F", "custom", "database dump format: plain, custom, tar or directory")
@@ -342,6 +347,13 @@ func parseCli(args []string) (options, []string, error) {
 	if *NoEncrypt {
 		opts.Encrypt = false
 		changed = append(changed, "encrypt")
+	}
+
+	// To override pause_replication = true from the config file on the command line,
+	// have MergeCliAndConfigOptions() use the false value
+	if *NoPauseReplication {
+		opts.PauseReplication = false
+		changed = append(changed, "pause-replication")
 	}
 
 	// Same for encrypt_keep_source = true in the config file
@@ -519,7 +531,7 @@ func loadConfigurationFile(path string) (options, error) {
 			return opts, nil
 		}
 
-		return opts, fmt.Errorf("Could load configuration file: %v", err)
+		return opts, fmt.Errorf("could load configuration file: %v", err)
 	}
 
 	if err := validateConfigurationFile(cfg); err != nil {
@@ -545,7 +557,7 @@ func loadConfigurationFile(path string) (options, error) {
 	opts.DirJobs = s.Key("parallel_backup_jobs").MustInt(1)
 	opts.CompressLevel = s.Key("compress_level").MustInt(-1)
 	opts.Jobs = s.Key("jobs").MustInt(1)
-	opts.Pausereplication = s.Key("pause_replication").MustBool(true)
+	opts.PauseReplication = s.Key("pause_replication").MustBool(true)
 	opts.PauseTimeout = s.Key("pause_timeout").MustInt(3600)
 	purgeInterval = s.Key("purge_older_than").MustString("30")
 	purgeKeep = s.Key("purge_min_keep").MustString("0")

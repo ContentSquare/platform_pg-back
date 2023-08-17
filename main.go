@@ -303,7 +303,7 @@ func run() (retVal error) {
 	}
 	l.Verboseln("databases to dump:", databases)
 
-	if opts.Pausereplication {
+	if opts.PauseReplication {
 		if err := pauseReplicationWithTimeout(db, opts.PauseTimeout); err != nil {
 			return err
 		}
