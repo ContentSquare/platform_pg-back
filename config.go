@@ -29,14 +29,15 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
-	"github.com/anmitsu/go-shlex"
-	"github.com/spf13/pflag"
-	"gopkg.in/ini.v1"
 	"os"
 	"runtime"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/anmitsu/go-shlex"
+	"github.com/spf13/pflag"
+	"gopkg.in/ini.v1"
 )
 
 var defaultCfgFile = "/etc/pg_back/pg_back.conf"
@@ -75,6 +76,11 @@ type options struct {
 	EncryptKeepSrc   bool
 	CipherPassphrase string
 	Decrypt          bool
+
+	skipGlobals      bool
+	skipSettings     bool
+	skipConfigFiles  bool
+	Pausereplication bool
 
 	Upload       string // values are none, s3, sftp, gcs
 	PurgeRemote  bool
@@ -251,6 +257,7 @@ func parseCli(args []string) (options, []string, error) {
 	pflag.StringSliceVarP(&opts.ExcludeDbs, "exclude-dbs", "D", []string{}, "list of databases to exclude")
 	pflag.BoolVarP(&opts.WithTemplates, "with-templates", "t", false, "include templates")
 	WithoutTemplates := pflag.Bool("without-templates", false, "force exclude templates")
+	pflag.Bool("no-pause-replication", false, "do not pause the replication before performing dump")
 	pflag.IntVarP(&opts.PauseTimeout, "pause-timeout", "T", 3600, "abort if replication cannot be paused after this number\nof seconds")
 	pflag.IntVarP(&opts.Jobs, "jobs", "j", 1, "dump this many databases concurrently")
 	pflag.StringVarP(&format, "format", "F", "custom", "database dump format: plain, custom, tar or directory")
@@ -330,7 +337,7 @@ func parseCli(args []string) (options, []string, error) {
 		changed = append(changed, "with-templates")
 	}
 
-	// To override encrypt = true from the config file on the command line,
+	// To override pause_replication = true from the config file on the command line,
 	// have MergeCliAndConfigOptions() use the false value
 	if *NoEncrypt {
 		opts.Encrypt = false
@@ -450,10 +457,11 @@ func validateConfigurationFile(cfg *ini.File) error {
 	known_globals := []string{
 		"bin_directory", "backup_directory", "timestamp_format", "host", "port", "user",
 		"dbname", "exclude_dbs", "include_dbs", "with_templates", "format",
-		"parallel_backup_jobs", "compress_level", "jobs", "pause_timeout",
+		"parallel_backup_jobs", "compress_level", "jobs", "pause_replication", "pause_timeout",
 		"purge_older_than", "purge_min_keep", "checksum_algorithm", "pre_backup_hook",
 		"post_backup_hook", "encrypt", "cipher_pass", "encrypt_keep_source",
-		"upload", "purge_remote", "s3_region", "s3_bucket", "s3_endpoint", "s3_profile",
+		"skip_globals", "skip_settings", "skip_config_files", "upload", "purge_remote",
+		"s3_region", "s3_bucket", "s3_endpoint", "s3_profile",
 		"s3_key_id", "s3_secret", "s3_force_path", "s3_tls", "sftp_host",
 		"sftp_port", "sftp_user", "sftp_password", "sftp_directory", "sftp_identity",
 		"sftp_ignore_hostkey", "gcs_bucket", "gcs_endpoint", "gcs_keyfile",
@@ -537,6 +545,7 @@ func loadConfigurationFile(path string) (options, error) {
 	opts.DirJobs = s.Key("parallel_backup_jobs").MustInt(1)
 	opts.CompressLevel = s.Key("compress_level").MustInt(-1)
 	opts.Jobs = s.Key("jobs").MustInt(1)
+	opts.Pausereplication = s.Key("pause_replication").MustBool(true)
 	opts.PauseTimeout = s.Key("pause_timeout").MustInt(3600)
 	purgeInterval = s.Key("purge_older_than").MustString("30")
 	purgeKeep = s.Key("purge_min_keep").MustString("0")
@@ -546,6 +555,10 @@ func loadConfigurationFile(path string) (options, error) {
 	opts.Encrypt = s.Key("encrypt").MustBool(false)
 	opts.CipherPassphrase = s.Key("cipher_pass").MustString("")
 	opts.EncryptKeepSrc = s.Key("encrypt_keep_source").MustBool(false)
+
+	opts.skipGlobals = s.Key("skip_globals").MustBool(false)
+	opts.skipSettings = s.Key("skip_settings").MustBool(false)
+	opts.skipConfigFiles = s.Key("skip_config_files").MustBool(false)
 
 	opts.Upload = s.Key("upload").MustString("none")
 	opts.PurgeRemote = s.Key("purge_remote").MustBool(false)
@@ -782,6 +795,13 @@ func mergeCliAndConfigOptions(cliOpts options, configOpts options, onCli []strin
 			opts.CipherPassphrase = cliOpts.CipherPassphrase
 		case "decrypt":
 			opts.Decrypt = cliOpts.Decrypt
+
+		case "skip-globals":
+			opts.skipGlobals = cliOpts.skipGlobals
+		case "skip-settings":
+			opts.skipSettings = cliOpts.skipSettings
+		case "skip-config-files":
+			opts.skipConfigFiles = cliOpts.skipConfigFiles
 
 		case "upload":
 			opts.Upload = cliOpts.Upload

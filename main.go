@@ -265,9 +265,11 @@ func run() (retVal error) {
 	// so it must be done before blocking on the WaitGroup in stopPostProcess()
 	defer close(producedFiles)
 
-	l.Infoln("dumping globals")
-	if err := dumpGlobals(opts.Directory, opts.TimeFormat, conninfo, producedFiles); err != nil {
-		return fmt.Errorf("pg_dumpall -g failed: %w", err)
+	if !opts.skipGlobals {
+		l.Infoln("dumping globals")
+		if err := dumpGlobals(opts.Directory, opts.TimeFormat, conninfo, producedFiles); err != nil {
+			return fmt.Errorf("pg_dumpall -g failed: %w", err)
+		}
 	}
 
 	db, err := dbOpen(conninfo)
@@ -276,18 +278,23 @@ func run() (retVal error) {
 	}
 	defer db.Close()
 
-	l.Infoln("dumping instance configuration")
 	var verr *pgVersionError
-	if err := dumpSettings(opts.Directory, opts.TimeFormat, db, producedFiles); err != nil {
-		if errors.As(err, &verr) {
-			l.Warnln(err)
-		} else {
-			return fmt.Errorf("could not dump configuration parameters: %w", err)
+	if !opts.skipSettings {
+		l.Infoln("dumping instance configuration")
+		if err := dumpSettings(opts.Directory, opts.TimeFormat, db, producedFiles); err != nil {
+			if errors.As(err, &verr) {
+				l.Warnln(err)
+			} else {
+				return fmt.Errorf("could not dump configuration parameters: %w", err)
+			}
 		}
+		return fmt.Errorf("a bucket is mandatory when upload is gcs")
 	}
 
-	if err := dumpConfigFiles(opts.Directory, opts.TimeFormat, db, producedFiles); err != nil {
-		return fmt.Errorf("could not dump configuration files: %w", err)
+	if !opts.skipConfigFiles {
+		if err := dumpConfigFiles(opts.Directory, opts.TimeFormat, db, producedFiles); err != nil {
+			return fmt.Errorf("could not dump configuration files: %w", err)
+		}
 	}
 
 	databases, err := listDatabases(db, opts.WithTemplates, opts.ExcludeDbs, opts.Dbnames)
@@ -296,8 +303,10 @@ func run() (retVal error) {
 	}
 	l.Verboseln("databases to dump:", databases)
 
-	if err := pauseReplicationWithTimeout(db, opts.PauseTimeout); err != nil {
-		return err
+	if opts.Pausereplication {
+		if err := pauseReplicationWithTimeout(db, opts.PauseTimeout); err != nil {
+			return err
+		}
 	}
 
 	exitCode := 0
@@ -425,9 +434,10 @@ func run() (retVal error) {
 			l.Infoln("dump of ACL and configuration of", dbname, "to", aclpath, "done")
 		}
 	}
-
-	if err := resumeReplication(db); err != nil {
-		l.Errorln(err)
+	if !opts.skipSettings {
+		if err := resumeReplication(db); err != nil {
+			l.Errorln(err)
+		}
 	}
 	db.Close()
 
