@@ -82,16 +82,17 @@ type options struct {
 	skipConfigFiles  bool
 	PauseReplication bool
 
-	Upload       string // values are none, s3, sftp, gcs
-	PurgeRemote  bool
-	S3Region     string
-	S3Bucket     string
-	S3EndPoint   string
-	S3Profile    string
-	S3KeyID      string
-	S3Secret     string
-	S3ForcePath  bool
-	S3DisableTLS bool
+	Upload           string // values are none, s3, sftp, gcs
+	PurgeRemoteDumps bool
+	PurgeLocalDumps  bool
+	S3Region         string
+	S3Bucket         string
+	S3EndPoint       string
+	S3Profile        string
+	S3KeyID          string
+	S3Secret         string
+	S3ForcePath      bool
+	S3DisableTLS     bool
 
 	SFTPHost             string
 	SFTPPort             string
@@ -435,7 +436,12 @@ func parseCli(args []string) (options, []string, error) {
 		return opts, changed, fmt.Errorf("invalid value for --upload: %s", err)
 	}
 
-	opts.PurgeRemote, err = validateYesNoOption(*purgeRemote)
+	opts.PurgeRemoteDumps, err = validateYesNoOption(*purgeRemote)
+	if err != nil {
+		return opts, changed, fmt.Errorf("invalid value for --purge-remote: %s", err)
+	}
+
+	opts.PurgeLocalDumps, err = validateYesNoOption(*purgeRemote)
 	if err != nil {
 		return opts, changed, fmt.Errorf("invalid value for --purge-remote: %s", err)
 	}
@@ -573,7 +579,8 @@ func loadConfigurationFile(path string) (options, error) {
 	opts.skipConfigFiles = s.Key("skip_config_files").MustBool(false)
 
 	opts.Upload = s.Key("upload").MustString("none")
-	opts.PurgeRemote = s.Key("purge_remote").MustBool(false)
+	opts.PurgeRemoteDumps = s.Key("purge_remote").MustBool(false)
+	opts.PurgeLocalDumps = s.Key("purge_local").MustBool(false)
 
 	opts.S3Region = s.Key("s3_region").MustString("")
 	opts.S3Bucket = s.Key("s3_bucket").MustString("")
@@ -818,7 +825,9 @@ func mergeCliAndConfigOptions(cliOpts options, configOpts options, onCli []strin
 		case "upload":
 			opts.Upload = cliOpts.Upload
 		case "purge-remote":
-			opts.PurgeRemote = cliOpts.PurgeRemote
+			opts.PurgeRemoteDumps = cliOpts.PurgeRemoteDumps
+		case "purge-local":
+			opts.PurgeLocalDumps = cliOpts.PurgeLocalDumps
 
 		case "s3-region":
 			opts.S3Region = cliOpts.S3Region

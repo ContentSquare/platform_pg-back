@@ -490,11 +490,13 @@ func run() (retVal error) {
 		}
 		limit := now.Add(o.PurgeInterval)
 
-		if err := purgeDumps(opts.Directory, dbname, o.PurgeKeep, limit); err != nil {
-			retVal = err
+		if opts.PurgeLocalDumps {
+			if err := purgeDumps(opts.Directory, dbname, o.PurgeKeep, limit); err != nil {
+				retVal = err
+			}
 		}
 
-		if opts.PurgeRemote && repo != nil {
+		if opts.PurgeRemoteDumps && repo != nil {
 			if err := purgeRemoteDumps(repo, opts.Directory, dbname, o.PurgeKeep, limit); err != nil {
 				retVal = err
 			}
@@ -503,11 +505,13 @@ func run() (retVal error) {
 
 	for _, other := range []string{"pg_globals", "pg_settings", "hba_file", "ident_file"} {
 		limit := now.Add(defDbOpts.PurgeInterval)
-		if err := purgeDumps(opts.Directory, other, defDbOpts.PurgeKeep, limit); err != nil {
-			retVal = err
+		if opts.PurgeLocalDumps {
+			if err := purgeDumps(opts.Directory, other, defDbOpts.PurgeKeep, limit); err != nil {
+				retVal = err
+			}
 		}
 
-		if opts.PurgeRemote && repo != nil {
+		if opts.PurgeRemoteDumps && repo != nil {
 			if err := purgeRemoteDumps(repo, opts.Directory, other, defDbOpts.PurgeKeep, limit); err != nil {
 				retVal = err
 			}
@@ -798,7 +802,7 @@ func pgToolVersion(tool string) int {
 
 func dumpGlobals(dir string, timeFormat string, conninfo *ConnInfo, fc chan<- sumFileJob) error {
 	command := execPath("pg_dumpall")
-	args := []string{"-g", "-w"}
+	args := []string{"-g", "-w", "--no-role-passwords"}
 
 	// pg_dumpall only connects to another database if it is given
 	// with the -l option
