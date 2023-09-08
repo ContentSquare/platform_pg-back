@@ -497,7 +497,7 @@ func run() (retVal error) {
 		}
 
 		if opts.PurgeRemoteDumps && repo != nil {
-			if err := purgeRemoteDumps(repo, opts.Directory, dbname, o.PurgeKeep, limit); err != nil {
+			if err := purgeRemoteDumps(repo, opts.Directory, dbname, o.PurgeKeep, limit, opts.UploadPrefix); err != nil {
 				retVal = err
 			}
 		}
@@ -512,7 +512,7 @@ func run() (retVal error) {
 		}
 
 		if opts.PurgeRemoteDumps && repo != nil {
-			if err := purgeRemoteDumps(repo, opts.Directory, other, defDbOpts.PurgeKeep, limit); err != nil {
+			if err := purgeRemoteDumps(repo, opts.Directory, other, defDbOpts.PurgeKeep, limit, opts.UploadPrefix); err != nil {
 				retVal = err
 			}
 		}
@@ -694,7 +694,7 @@ func dumper(id int, jobs <-chan *dump, results chan<- *dump, fc chan<- sumFileJo
 	}
 }
 
-func relPath(basedir, path string) string {
+func relPath(basedir, path string, pathPrefix string) string {
 	target, err := filepath.Rel(basedir, path)
 	if err != nil {
 		l.Warnf("could not get relative path from %s: %s\n", path, err)
@@ -704,6 +704,10 @@ func relPath(basedir, path string) string {
 	prefix := fmt.Sprintf("..%c", os.PathSeparator)
 	for strings.HasPrefix(target, prefix) {
 		target = strings.TrimPrefix(target, prefix)
+	}
+
+	if len(pathPrefix) > 0 {
+		target = filepath.Join(pathPrefix, target)
 	}
 
 	return target
@@ -1337,7 +1341,7 @@ func postProcessFiles(inFiles chan sumFileJob, wg *sync.WaitGroup, opts options)
 				}
 
 				if opts.Upload != "none" && repo != nil {
-					if err := repo.Upload(j.Path, relPath(opts.Directory, j.Path)); err != nil {
+					if err := repo.Upload(j.Path, fmt.Sprintf("app_services/%s", relPath(opts.Directory, j.Path, opts.UploadPrefix))); err != nil {
 						l.Errorln(err)
 						if !failed {
 							ret <- err

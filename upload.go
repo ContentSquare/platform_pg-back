@@ -26,10 +26,18 @@
 package main
 
 import (
-	"cloud.google.com/go/storage"
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"net"
+	"os"
+	"os/user"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"cloud.google.com/go/storage"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
@@ -42,13 +50,6 @@ import (
 	"golang.org/x/crypto/ssh/knownhosts"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
-	"io"
-	"net"
-	"os"
-	"os/user"
-	"path/filepath"
-	"strings"
-	"time"
 )
 
 // A Repo is a remote service where we can upload files
@@ -169,7 +170,7 @@ func (r *s3repo) Upload(path string, target string) error {
 	return nil
 }
 
-func (r *s3repo) List(prefix string) ([]Item, error) {
+func (r *s3repo) List(prefix string, pathPrefix string) ([]Item, error) {
 	svc := s3.New(r.session)
 
 	files := make([]Item, 0)
@@ -179,7 +180,7 @@ func (r *s3repo) List(prefix string) ([]Item, error) {
 	for {
 		resp, err := svc.ListObjectsV2(&s3.ListObjectsV2Input{
 			Bucket:            aws.String(r.bucket),
-			Prefix:            aws.String(forwardSlashes(prefix)),
+			Prefix:            aws.String(forwardSlashes(pathPrefix + prefix)),
 			ContinuationToken: contToken,
 		})
 
@@ -482,7 +483,7 @@ func (r *sftpRepo) Upload(path string, target string) error {
 	return nil
 }
 
-func (r *sftpRepo) List(prefix string) (items []Item, rerr error) {
+func (r *sftpRepo) List(filePrefix string, pathPrefix string) (items []Item, rerr error) {
 	items = make([]Item, 0)
 
 	// sftp requires slash as path separator
@@ -503,9 +504,9 @@ func (r *sftpRepo) List(prefix string) (items []Item, rerr error) {
 		// that take care of putting back the proper os.PathSeparator
 		// if it find some slashes, so we can compare paths without
 		// worrying about path separators
-		path := relPath(baseDir, w.Path())
+		path := relPath(baseDir, w.Path(), pathPrefix)
 
-		if !strings.HasPrefix(path, prefix) {
+		if !strings.HasPrefix(path, filePrefix) {
 			continue
 		}
 

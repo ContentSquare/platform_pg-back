@@ -82,7 +82,8 @@ type options struct {
 	skipConfigFiles  bool
 	PauseReplication bool
 
-	Upload           string // values are none, s3, sftp, gcs
+	Upload           string // values are none, s3, sftp, gcs, azure
+	UploadPrefix     string // values are none, s3, sftp, gcs, azure
 	PurgeRemoteDumps bool
 	PurgeLocalDumps  bool
 	S3Region         string
@@ -283,6 +284,7 @@ func parseCli(args []string) (options, []string, error) {
 	pflag.StringVar(&opts.CipherPassphrase, "cipher-pass", "", "cipher passphrase for encryption and decryption\n")
 
 	pflag.StringVar(&opts.Upload, "upload", "none", "upload produced files to target (s3, gcs,..) use \"none\" to override\nconfiguration file and disable upload")
+	pflag.StringVar(&opts.UploadPrefix, "upload-prefix", "", "path prefix for remote upload")
 	purgeRemote := pflag.String("purge-remote", "no", "purge the file on remote location after upload, with the same rules\nas the local directory")
 
 	pflag.StringVar(&opts.S3Region, "s3-region", "", "S3 region")
@@ -478,7 +480,7 @@ func validateConfigurationFile(cfg *ini.File) error {
 		"parallel_backup_jobs", "compress_level", "jobs", "pause_replication", "pause_timeout",
 		"purge_older_than", "purge_min_keep", "checksum_algorithm", "pre_backup_hook",
 		"post_backup_hook", "encrypt", "cipher_pass", "encrypt_keep_source",
-		"skip_globals", "skip_settings", "skip_config_files", "upload", "purge_remote",
+		"skip_globals", "skip_settings", "skip_config_files", "upload", "upload_prefix", "purge_remote",
 		"s3_region", "s3_bucket", "s3_endpoint", "s3_profile",
 		"s3_key_id", "s3_secret", "s3_force_path", "s3_tls", "sftp_host",
 		"sftp_port", "sftp_user", "sftp_password", "sftp_directory", "sftp_identity",
@@ -579,6 +581,7 @@ func loadConfigurationFile(path string) (options, error) {
 	opts.skipConfigFiles = s.Key("skip_config_files").MustBool(false)
 
 	opts.Upload = s.Key("upload").MustString("none")
+	opts.UploadPrefix = s.Key("upload_prefix").MustString("")
 	opts.PurgeRemoteDumps = s.Key("purge_remote").MustBool(false)
 	opts.PurgeLocalDumps = s.Key("purge_local").MustBool(false)
 
@@ -824,6 +827,8 @@ func mergeCliAndConfigOptions(cliOpts options, configOpts options, onCli []strin
 
 		case "upload":
 			opts.Upload = cliOpts.Upload
+		case "upload-prefix":
+			opts.Upload = cliOpts.UploadPrefix
 		case "purge-remote":
 			opts.PurgeRemoteDumps = cliOpts.PurgeRemoteDumps
 		case "purge-local":
